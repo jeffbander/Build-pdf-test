@@ -2,5 +2,4 @@
 streamlit
 pdfplumber
 psycopg2-binary
-mistralai
 mistralai  # Optional for OCR; remove if not used
