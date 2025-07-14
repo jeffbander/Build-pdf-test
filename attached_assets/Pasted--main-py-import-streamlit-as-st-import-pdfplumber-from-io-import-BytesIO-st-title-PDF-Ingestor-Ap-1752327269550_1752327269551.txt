@@ -1,0 +1,73 @@
+# main.py
+import streamlit as st
+import pdfplumber
+from io import BytesIO
+
+st.title("PDF Ingestor App")
+
+st.markdown("""
+This application allows you to upload large PDF documents (up to 300 pages and 50 MB), parse them while preserving text, formatting, and sections as much as possible, and export the results as searchable text. The extracted text is structured with page delimiters and maintains layout whitespace for better readability and AI search compatibility.
+
+Note: For optimal preservation of formatting and sections, the app uses layout-aware text extraction. Error handling and progress status are included.
+""")
+
+uploaded_file = st.file_uploader("Upload PDF", type="pdf")
+
+if uploaded_file:
+    file_size = len(uploaded_file.getvalue()) / (1024 * 1024)  # Size in MB
+    st.info(f"Uploaded file size: {file_size:.2f} MB")
+
+    if st.button("Process PDF"):
+        with st.spinner("Opening PDF..."):
+            try:
+                pdf_bytes = uploaded_file.read()
+                pdf = pdfplumber.open(BytesIO(pdf_bytes))
+                num_pages = len(pdf.pages)
+                st.info(f"PDF loaded successfully. Total pages: {num_pages}")
+
+                text = ""
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+
+                for i, page in enumerate(pdf.pages):
+                    try:
+                        page_text = page.extract_text(layout=True)
+                        if page_text:
+                            text += f"--- Page {page.page_number} ---\n{page_text}\n\n"
+                        else:
+                            text += f"--- Page {page.page_number} --- (No text extracted)\n\n"
+                    except Exception as page_error:
+                        text += f"--- Page {page.page_number} --- (Error extracting text: {str(page_error)})\n\n"
+
+                    progress = (i + 1) / num_pages
+                    progress_bar.progress(progress)
+                    status_text.text(f"Processing page {i + 1} of {num_pages} ({progress * 100:.1f}%)")
+
+                pdf.close()
+                st.success("PDF processing complete!")
+                st.text_area("Extracted Text Preview (first 5000 characters)", text[:5000], height=300)
+
+                # Export options
+                st.download_button(
+                    label="Download Full Extracted Text as TXT",
+                    data=text,
+                    file_name=f"{uploaded_file.name}_extracted.txt",
+                    mime="text/plain"
+                )
+
+                # Optional: Export as JSON for structured AI use (e.g., pages as list)
+                import json
+                pages_list = text.split("--- Page ")[1:]  # Split into pages
+                pages_json = [{"page": i+1, "content": content} for i, content in enumerate(pages_list)]
+                st.download_button(
+                    label="Download Extracted Text as JSON",
+                    data=json.dumps(pages_json, indent=4),
+                    file_name=f"{uploaded_file.name}_extracted.json",
+                    mime="application/json"
+                )
+
+            except Exception as e:
+                st.error(f"Error processing PDF: {str(e)}. Please ensure the file is a valid PDF and not corrupted. If the file is too large, consider splitting it.")
+                st.info("Tip: Replit has resource limits; extremely large files may require more memory.")
+else:
+    st.warning("Please upload a PDF file to begin.")
